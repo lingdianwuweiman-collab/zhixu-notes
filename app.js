@@ -35,16 +35,15 @@ function noteForNode(id){return liveNotes().find(n=>n.parentId===id)}
 
 function renderTree(){
   const container=byId('knowledgeTree'); container.innerHTML='';
-  const buildFile=(note)=>{const row=document.createElement('div');row.className='tree-row tree-file'+(currentId===note.id?' active':'');row.innerHTML=`<span class="tree-toggle"></span><span class="tree-icon">▤</span><span class="tree-label">${escapeHtml(note.title)}</span><span class="tree-kind file-kind">文件</span>`;row.onclick=()=>openNote(note.id);row.oncontextmenu=(e)=>showContextMenu(e,'file',note.id);return row};
+  const buildFile=(note)=>{const row=document.createElement('div');row.className='tree-row tree-file'+(currentId===note.id?' active':'');row.dataset.id=note.id;row.dataset.type='file';row.innerHTML=`<span class="tree-toggle"></span><span class="tree-icon">▤</span><span class="tree-label">${escapeHtml(note.title)}</span><span class="tree-kind file-kind">文件</span>`;row.onclick=()=>openNote(note.id);return row};
   const build=(node,depth=0)=>{
     const wrap=document.createElement('div');wrap.className='tree-node';
-    const row=document.createElement('div');row.className='tree-row tree-folder';
+    const row=document.createElement('div');row.className='tree-row tree-folder';row.dataset.id=node.id;row.dataset.type='folder';
     const files=liveNotes().filter(note=>note.parentId===node.id),hasKids=(node.children||[]).length+files.length>0; row.innerHTML=`<span class="tree-toggle">${hasKids?(node.collapsed?'›':'⌄'):''}</span><span class="tree-icon">▣</span><span class="tree-label">${escapeHtml(node.name)}</span><span class="tree-kind folder-kind">文件夹</span><span class="tree-actions" title="在此新增节点">＋</span>`;
     const children=document.createElement('div');children.className='tree-children'+(node.collapsed?' collapsed':'');
     row.querySelector('.tree-toggle').onclick=(e)=>{e.stopPropagation();node.collapsed=!node.collapsed;save();renderTree()};
     row.querySelector('.tree-actions').onclick=(e)=>{e.stopPropagation();askBranch(node.id)};
     row.onclick=()=>{node.collapsed=!node.collapsed;save();renderTree()};
-    row.oncontextmenu=(e)=>showContextMenu(e,'folder',node.id);
     wrap.append(row);(node.children||[]).forEach(c=>children.append(build(c,depth+1)));files.forEach(note=>children.append(buildFile(note)));wrap.append(children);return wrap;
   }; state.tree.forEach(n=>container.append(build(n)));
 }
@@ -90,7 +89,7 @@ function showSearch(filter=''){const results=liveNotes().filter(n=>{const target
 function searchResultHtml(items){return items.length?items.map(n=>`<button class="search-result" data-id="${n.id}"><strong>${escapeHtml(n.title)}</strong><span>${escapeHtml(n.tags.map(t=>'#'+t).join('  '))}　${escapeHtml(textOf(n.content).slice(0,80))}</span></button>`).join(''):'<p style="color:#879087;font-size:12px">没有找到匹配的笔记</p>'}
 function bindSearchResults(){document.querySelectorAll('.search-result').forEach(el=>el.onclick=()=>{closeModal();openNote(el.dataset.id)})}
 function addTag(){const note=current();modal('添加标签','<label>标签名称<input id="newTag" placeholder="例如：重点、待复习、灵感"></label>',()=>{const tag=byId('newTag').value.trim().replace(/^#/,'');if(!tag)return toast('请输入标签');if(!note.tags.includes(tag))note.tags.push(tag);save();renderTags();closeModal()})}
-function command(cmd,value=null){byId('editor').focus();document.execCommand(cmd,false,value);scheduleSync()}
+function command(cmd,value=null){byId('editor').focus();document.execCommand('styleWithCSS',false,true);document.execCommand(cmd,false,value);scheduleSync()}
 function insertChecklist(){command('insertHTML','<ul class="todo"><li><input type="checkbox"> 待完成事项</li></ul><p><br></p>')}
 function insertImage(file){if(!file)return;if(file.size>2.5*1024*1024)return toast('图片请控制在 2.5MB 以内');const r=new FileReader();r.onload=()=>{command('insertHTML',`<img src="${r.result}" alt="学习笔记图片">`);toast('图片已插入')};r.readAsDataURL(file)}
 function exportNote(){const n=current();const html=`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>${escapeHtml(n.title)}</title><body style="max-width:850px;margin:45px auto;font-family:Microsoft YaHei,sans-serif;line-height:1.8;color:#263128"><h1>${escapeHtml(n.title)}</h1><p>标签：${escapeHtml(n.tags.map(x=>'#'+x).join('　'))}</p><hr>${n.content}</body></html>`;const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([html],{type:'text/html;charset=utf-8'}));a.download=(n.title||'学习笔记')+'.html';a.click();URL.revokeObjectURL(a.href);toast('笔记已导出为 HTML 文件')}
@@ -113,16 +112,85 @@ document.querySelectorAll('[data-block]').forEach(b=>b.onclick=()=>command('form
 byId('checklistBtn').onclick=insertChecklist;
 byId('imageBtn').onclick=()=>byId('imageInput').click();byId('imageInput').onchange=e=>{insertImage(e.target.files[0]);e.target.value=''};
 byId('linkBtn').onclick=()=>{const url=prompt('输入链接地址');if(url)command('createLink',url)};
-// 文字颜色
+// ===== 文字颜色功能 =====
 let lastColor='#c0392b';
-const colorPanel=byId('colorPanel'),colorBtn=byId('fontColorBtn');
-function applyColor(color){command('foreColor',color);lastColor=color;colorBtn.querySelector('.color-a').style.color=color;colorBtn.querySelector('.color-bar').style.background=color;byId('customColor').value=color;colorPanel.classList.add('hidden')}
-colorBtn.onclick=(e)=>{e.stopPropagation();colorPanel.classList.toggle('hidden')};
-colorPanel.querySelectorAll('[data-color]').forEach(b=>b.onclick=()=>applyColor(b.dataset.color));
-byId('customColor').oninput=e=>applyColor(e.target.value);
-byId('clearColorBtn').onclick=()=>{command('foreColor','#30362f');toast('已重置为默认颜色')};
-document.addEventListener('click',()=>colorPanel.classList.add('hidden'));
-colorPanel.onclick=e=>e.stopPropagation();
+const editorColorPanel=byId('colorPanel');
+const editorColorBtn=byId('fontColorBtn');
+
+// 保存选区，以便点击颜色后恢复
+let savedRange=null;
+function saveSelection(){
+  const sel=window.getSelection();
+  if(sel.rangeCount>0)savedRange=sel.getRangeAt(0).cloneRange();
+}
+function restoreSelection(){
+  if(savedRange){
+    const sel=window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(savedRange);
+    savedRange=null;
+  }
+}
+
+function applyColor(color){
+  restoreSelection();
+  command('foreColor',color);
+  lastColor=color;
+  editorColorBtn.querySelector('.color-a').style.color=color;
+  editorColorBtn.querySelector('.color-bar').style.background=color;
+  byId('customColor').value=color;
+  editorColorPanel.classList.add('hidden');
+}
+
+editorColorBtn.addEventListener('mousedown',saveSelection);
+editorColorBtn.addEventListener('click',function(e){
+  e.preventDefault();
+  e.stopPropagation();
+  // 先检查面板是否已经打开
+  const isHidden=editorColorPanel.classList.contains('hidden');
+  // 关闭所有右键菜单
+  hideContextMenu();
+  // 切换颜色面板
+  if(isHidden){
+    // 重新定位颜色面板
+    const rect=editorColorBtn.getBoundingClientRect();
+    editorColorPanel.style.top=(rect.bottom+4)+'px';
+    editorColorPanel.style.left=rect.left+'px';
+    editorColorPanel.style.position='fixed';
+    editorColorPanel.style.zIndex='100';
+    editorColorPanel.classList.remove('hidden');
+  }else{
+    editorColorPanel.classList.add('hidden');
+  }
+});
+
+editorColorPanel.querySelectorAll('[data-color]').forEach(b=>{
+  b.addEventListener('mousedown',function(e){e.preventDefault();saveSelection();});
+  b.addEventListener('click',function(e){
+    e.preventDefault();
+    e.stopPropagation();
+    applyColor(this.dataset.color);
+  });
+});
+
+byId('customColor').addEventListener('change',function(e){
+  applyColor(this.value);
+});
+
+byId('clearColorBtn').addEventListener('click',function(e){
+  e.preventDefault();
+  e.stopPropagation();
+  restoreSelection();
+  command('foreColor','#30362f');
+  editorColorPanel.classList.add('hidden');
+  toast('已重置为默认颜色');
+});
+
+document.addEventListener('click',function(e){
+  if(!editorColorPanel.contains(e.target)&&e.target!==editorColorBtn){
+    editorColorPanel.classList.add('hidden');
+  }
+});
 byId('addTagBtn').onclick=addTag;
 byId('favoriteBtn').onclick=()=>{const n=current();n.favorite=!n.favorite;save();openNote(n.id);toast(n.favorite?'已加入收藏':'已取消收藏')};
 byId('deleteBtn').onclick=moveTrash;byId('exportBtn').onclick=exportNote;byId('collapseAllBtn').onclick=()=>{const hs=[...byId('editor').querySelectorAll('h1')];const shouldFold=hs.some(h=>!h.classList.contains('folded'));hs.forEach(h=>toggleSection(h,shouldFold));byId('collapseAllBtn').textContent=shouldFold?'全部展开':'全部折叠'};
@@ -133,23 +201,90 @@ byId('showTrashBtn').onclick=showTrash;byId('openRecentBtn').onclick=()=>{const 
 byId('addResourceBtn').onclick=addResource;byId('checkResourcesBtn').onclick=checkResources;
 renderStartDanmaku();renderResources();renderTree();renderMap();updateStats();
 
-// ===== 右键菜单：在节点上右键可添加子节点或删除 =====
+// ===== 右键菜单 =====
 let ctxTarget=null;
-function showContextMenu(e,type,id){
+let ctxMode='tree'; // 'tree' | 'editor'
+
+// 预设颜色
+const QUICK_COLORS=[
+  {color:'#c0392b',name:'红色'},{color:'#e67e22',name:'橙色'},
+  {color:'#f1c40f',name:'黄色'},{color:'#27ae60',name:'绿色'},
+  {color:'#2980b9',name:'蓝色'},{color:'#8e44ad',name:'紫色'},
+  {color:'#2c3e50',name:'深色'},{color:'#95a5a6',name:'灰色'}
+];
+
+function showTreeContextMenu(e,type,id){
   e.preventDefault();e.stopPropagation();
+  ctxMode='tree';
   ctxTarget={type,id};
   const menu=byId('contextMenu');
   menu.innerHTML=type==='folder'
     ?'<button class="ctx-item" data-act="add">＋ 添加子节点</button><button class="ctx-item ctx-danger" data-act="delete">⌫ 删除节点</button>'
     :'<button class="ctx-item ctx-danger" data-act="delete">⌫ 移至回收站</button>';
+  showMenuAt(e.clientX,e.clientY);
+}
+
+function showEditorContextMenu(e){
+  e.preventDefault();e.stopPropagation();
+  ctxMode='editor';
+  ctxTarget=null;
+  const sel=window.getSelection();
+  const hasSelection=sel.toString().trim().length>0&&byId('editor').contains(sel.anchorNode);
+
+  const menu=byId('contextMenu');
+  let html='';
+
+  // 文字格式
+  html+='<div class="ctx-section"><button class="ctx-item" data-cmd="bold"><b>B</b> 加粗</button>';
+  html+='<button class="ctx-item" data-cmd="italic"><i>I</i> 斜体</button>';
+  html+='<button class="ctx-item" data-cmd="underline"><u>U</u> 下划线</button></div>';
+  html+='<div class="ctx-divider"></div>';
+
+  // 标题
+  html+='<div class="ctx-section"><button class="ctx-item" data-block="h1">H 一级标题</button>';
+  html+='<button class="ctx-item" data-block="h2">H 二级标题</button>';
+  html+='<button class="ctx-item" data-block="h3">H 三级标题</button>';
+  html+='<button class="ctx-item" data-block="p">¶ 正文</button></div>';
+  html+='<div class="ctx-divider"></div>';
+
+  // 列表
+  html+='<div class="ctx-section"><button class="ctx-item" data-cmd="insertUnorderedList">• 无序列表</button>';
+  html+='<button class="ctx-item" data-cmd="insertOrderedList">1. 有序列表</button></div>';
+  html+='<div class="ctx-divider"></div>';
+
+  // 颜色
+  html+='<div class="ctx-section"><span class="ctx-label">文字颜色</span><div class="ctx-colors">';
+  QUICK_COLORS.forEach(c=>{
+    html+=`<button class="ctx-color-swatch" data-color="${c.color}" style="background:${c.color}" title="${c.name}"></button>`;
+  });
+  html+='</div><button class="ctx-item" data-act="resetColor">⬤ 重置为默认颜色</button></div>';
+  html+='<div class="ctx-divider"></div>';
+
+  // 其他
+  html+='<div class="ctx-section"><button class="ctx-item" data-act="insertLink">↗ 插入链接</button>';
+  if(hasSelection){
+    html+='<button class="ctx-item ctx-danger" data-act="cutText">✂ 剪切</button>';
+    html+='<button class="ctx-item ctx-danger" data-act="deleteText">⌫ 删除选中文字</button>';
+  }
+  html+='</div>';
+
+  menu.innerHTML=html;
+  showMenuAt(e.clientX,e.clientY);
+}
+
+function showMenuAt(x,y){
+  const menu=byId('contextMenu');
   menu.classList.remove('hidden');
   const r=menu.getBoundingClientRect();
-  let x=e.clientX,y=e.clientY;
-  if(x+r.width>window.innerWidth)x=window.innerWidth-r.width-6;
-  if(y+r.height>window.innerHeight)y=window.innerHeight-r.height-6;
-  menu.style.left=x+'px';menu.style.top=y+'px';
+  let px=x,py=y;
+  if(px+r.width>window.innerWidth)px=window.innerWidth-r.width-6;
+  if(py+r.height>window.innerHeight)py=window.innerHeight-r.height-6;
+  if(px<0)px=6;if(py<0)py=6;
+  menu.style.left=px+'px';menu.style.top=py+'px';
 }
-function hideContextMenu(){byId('contextMenu').classList.add('hidden');ctxTarget=null}
+
+function hideContextMenu(){byId('contextMenu').classList.add('hidden');ctxTarget=null;ctxMode='tree';}
+
 function deleteNote(id){
   const note=state.notes.find(n=>n.id===id);if(!note)return;
   note.deleted=true;save();
@@ -167,14 +302,55 @@ function deleteNode(id){
     list.splice(idx,1);closeModal();save();renderHome();toast('已删除节点');
   },'删除');
 }
+
 byId('contextMenu').addEventListener('click',(e)=>{
-  const btn=e.target.closest('.ctx-item');if(!btn||!ctxTarget)return;
-  const act=btn.dataset.act;const t=ctxTarget;hideContextMenu();
-  if(act==='add')askBranch(t.id);
-  else if(act==='delete'){if(t.type==='folder')deleteNode(t.id);else deleteNote(t.id)}
+  const btn=e.target.closest('.ctx-item,.ctx-color-swatch');if(!btn)return;
+  e.stopPropagation();
+  if(ctxMode==='tree'){
+    const act=btn.dataset.act;const t=ctxTarget;hideContextMenu();
+    if(act==='add')askBranch(t.id);
+    else if(act==='delete'){if(t.type==='folder')deleteNode(t.id);else deleteNote(t.id)}
+  }else if(ctxMode==='editor'){
+    // 编辑器右键菜单
+    byId('editor').focus();
+    if(btn.dataset.cmd){
+      command(btn.dataset.cmd);
+      hideContextMenu();
+    }else if(btn.dataset.block){
+      command('formatBlock',btn.dataset.block);
+      hideContextMenu();
+    }else if(btn.dataset.color){
+      command('foreColor',btn.dataset.color);
+      hideContextMenu();
+    }else if(btn.dataset.act){
+      const act=btn.dataset.act;
+      hideContextMenu();
+      if(act==='resetColor'){command('foreColor','#30362f');toast('已重置为默认颜色');}
+      else if(act==='insertLink'){const url=prompt('输入链接地址');if(url)command('createLink',url);}
+      else if(act==='cutText'){document.execCommand('cut');scheduleSync();}
+      else if(act==='deleteText'){document.execCommand('delete');scheduleSync();}
+    }
+  }
 });
+
 document.addEventListener('click',hideContextMenu);
-document.addEventListener('contextmenu',(e)=>{if(!e.target.closest('.tree-row'))hideContextMenu()});
+document.addEventListener('contextmenu',function(e){
+  // 关闭颜色面板
+  editorColorPanel.classList.add('hidden');
+  // 判断右键目标
+  const treeRow=e.target.closest('.tree-row');
+  const editor=byId('editor');
+  if(treeRow){
+    const id=treeRow.dataset.id;
+    const type=treeRow.dataset.type;
+    if(id&&type)showTreeContextMenu(e,type,id);
+  }else if(editor&&editor.contains(e.target)&&currentId){
+    // 在编辑器内右键
+    showEditorContextMenu(e);
+  }else{
+    hideContextMenu();
+  }
+});
 
 // ===== 整体备份：导出 / 导入全部笔记 =====
 function exportBackup(){
