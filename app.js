@@ -199,9 +199,10 @@ function saveCloudConfig(){localStorage.setItem(CLOUD_CFG_KEY,JSON.stringify(clo
 
 // 从云端拉取数据并覆盖当前 state（silent=true 时不弹确认框）
 async function fetchCloudData(binId,apiKey,silent){
-  const headers=apiKey?{'X-Master-Key':apiKey}:{};
+  if(!apiKey)throw new Error('请先在云端同步中填写 API Key');
+  const headers={'X-Master-Key':apiKey};
   const res=await fetch('https://api.jsonbin.io/v3/b/'+binId+'/latest',{headers});
-  if(!res.ok)throw new Error('HTTP '+res.status+(res.status===401?'（API Key 错误或 Bin 不是公开的）':res.status===404?'（Bin 不存在）':''));
+  if(!res.ok)throw new Error('HTTP '+res.status+(res.status===401?'（API Key 错误）':res.status===404?'（Bin 不存在）':''));
   const j=await res.json();
   const data=j.record;
   if(!data.tree||!data.notes)throw new Error('云端数据格式不正确');
@@ -227,8 +228,8 @@ async function fetchCloudData(binId,apiKey,silent){
 }
 
 function openCloudModal(){
-  modal('云端同步（JSONBin.io）','<p style="font-size:12px;line-height:1.7;color:#707970;margin:0 0 8px">把全部笔记保存到云端。将 Bin 设为<b>公开可读</b>后，记住带 #bin=xxx 的网址即可在任何设备打开。</p>'
-    +'<label>API Key（X-Master-Key，仅上传/写入需要）<input id="cloudApiKey" type="password" placeholder="粘贴你的 Master Key（公开读取可留空）" value="'+(cloudConfig.apiKey||'')+'"></label>'
+  modal('云端同步（JSONBin.io）','<p style="font-size:12px;line-height:1.7;color:#707970;margin:0 0 8px">把全部笔记保存到<b>私有云端</b>。只有填入你的 API Key 才能读写数据。<br>在新设备打开网址后，在此填入 API Key 即可同步笔记。</p>'
+    +'<label>API Key（X-Master-Key）<input id="cloudApiKey" type="password" placeholder="粘贴你的 Master Key（读写都需要）" value="'+(cloudConfig.apiKey||'')+'"></label>'
     +'<label>Bin ID（首次上传后自动生成）<input id="cloudBinId" placeholder="例如 6a86e78bf5f4af5e292cc515" value="'+(cloudConfig.binId||'')+'"></label>'
     +'<p id="cloudStatus" style="font-size:12px;color:#7e9b81;margin:8px 0 0"></p>',closeModal,'关闭');
   const actions=byId('modalRoot').querySelector('.modal-actions');
@@ -243,7 +244,7 @@ function openCloudModal(){
     byId('cloudUpload').textContent='上传中…';
     try{
       let id=cloudConfig.binId;
-      const headers={'X-Master-Key':cloudConfig.apiKey,'Content-Type':'application/json','X-Bin-Private':'false'};
+      const headers={'X-Master-Key':cloudConfig.apiKey,'Content-Type':'application/json'};
       if(id){
         await fetch('https://api.jsonbin.io/v3/b/'+id,{method:'PUT',headers,body:JSON.stringify(state)});
       }else{
@@ -254,7 +255,7 @@ function openCloudModal(){
       byId('cloudBinId').value=id;
       // 更新网址 hash，方便收藏
       history.replaceState(null,'','#bin='+id);
-      status('上传成功！可分享网址：'+location.origin+location.pathname+'#bin='+id,'#7e9b81');
+      status('上传成功！你的笔记网址：'+location.origin+location.pathname+'#bin='+id+'（在新设备填入 API Key 即可访问）','#7e9b81');
     }catch(e){status('上传失败：'+e.message,'#b25d55')}
     byId('cloudUpload').textContent='上传到云端';
   };
@@ -282,7 +283,7 @@ function silentUpload(){
   try{
     fetch('https://api.jsonbin.io/v3/b/'+cloudConfig.binId,{
       method:'PUT',
-      headers:{'X-Master-Key':cloudConfig.apiKey,'Content-Type':'application/json','X-Bin-Private':'false'},
+      headers:{'X-Master-Key':cloudConfig.apiKey,'Content-Type':'application/json'},
       body:payload,
       keepalive:true
     }).catch(()=>{});
@@ -298,12 +299,17 @@ window.addEventListener('beforeunload',silentUpload);
   cloudConfig.binId=binId;saveCloudConfig();
   // 等页面初始化完成后自动加载
   setTimeout(async()=>{
-    // 如果本地没有数据（初始默认状态），静默加载；否则提示
+    // 如果没有配置 API Key，提示用户去设置
+    if(!cloudConfig.apiKey){
+      toast('检测到云端笔记 ID，请在「☁ 云端同步」中填入 API Key 以加载笔记');
+      return;
+    }
+    // 如果本地没有数据（初始默认状态），静默加载；否则询问
     const hasLocalData=liveNotes().some(n=>n.content&&n.content!==defaultContent())||state.tree.length>3;
     try{
-      await fetchCloudData(binId,cloudConfig.apiKey||null, !hasLocalData);
+      await fetchCloudData(binId,cloudConfig.apiKey, !hasLocalData);
     }catch(e){
-      toast('自动加载云端数据失败：'+e.message);
+      toast('加载云端笔记失败：'+e.message+'（请检查 API Key 是否正确）');
     }
   },500);
 })();
