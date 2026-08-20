@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f7f8f3" />
+  <title>知序 · 学习笔记</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <section class="start-view" id="startView" aria-label="学习启动页">
+    <div class="start-orbit orbit-one"></div><div class="start-orbit orbit-two"></div>
+    <div class="start-brand"><span>⌁</span> 知序 <small>STUDY SPACE</small></div>
+    <p class="start-kicker">给专注留一点空白</p>
+    <button class="begin-learning" id="beginLearningBtn"><span>开始学习</span><i>→</i></button>
+    <p class="start-hint">点击开启你的知识树</p>
+    <div class="danmaku-stage" id="danmakuStage" aria-label="学习灵感与资源"></div>
+    <div class="start-footer">学习资源会同步记录在知识树界面</div>
+  </section>
+
+  <div class="app-shell hidden" id="appShell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">⌁</span><span>知序</span><small>STUDY SPACE</small></div>
+      <button class="new-note" id="newNoteBtn"><span>＋</span> 新建节点</button>
+      <div class="side-search"><span>⌕</span><input id="globalSearch" type="search" placeholder="搜索标题、内容、标签" /></div>
+      <nav class="tree-wrap" aria-label="知识树">
+        <div class="tree-heading"><span>我的知识树</span><button id="addRootBtn" title="新增分支">＋</button></div>
+        <div id="knowledgeTree" class="knowledge-tree"></div>
+      </nav>
+      <div class="sidebar-bottom">
+        <button id="favoritesBtn">☆ 收藏的笔记 <span id="favoriteCount">0</span></button>
+        <button id="showTrashBtn">⌫ 回收站 <span id="trashCount">0</span></button>
+        <button id="exportBackupBtn">⬇ 导出备份</button>
+        <button id="importBackupBtn">⬆ 导入备份</button>
+        <button id="cloudSyncBtn">☁ 云端同步</button>
+        <p>建议定期导出备份，防止数据丢失</p>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <section class="welcome-view" id="welcomeView">
+        <div class="topline"><span>学习地图</span><span id="today"></span></div>
+        <div class="welcome-copy"><p class="eyebrow">把零散的学习，长成自己的树</p><h1>今天，想学习什么？</h1><p>从一条枝干开始记录。你可以随时展开、整理、回顾它。</p><div class="tree-legend"><span><i>▣</i> 文件夹：收纳子节点</span><span><i>▤</i> 文件：可直接编辑的笔记</span></div></div>
+        <div id="treeCanvas" class="tree-canvas" aria-label="知识树总览"></div>
+        <div class="welcome-footer">
+          <div><strong id="noteTotal">0</strong><span>篇笔记</span></div><div><strong id="tagTotal">0</strong><span>个标签</span></div><div><strong id="wordTotal">0</strong><span>字内容</span></div>
+          <button class="text-btn" id="openRecentBtn">查看最近编辑 →</button>
+        </div>
+        <section class="resource-shelf" aria-label="已验证的学习资源">
+          <div class="resource-heading"><div><p>已验证的学习资源</p><small>来自启动页的可访问网址</small></div><div><button id="checkResourcesBtn">检查链接</button><button id="addResourceBtn">＋ 添加网址</button></div></div>
+          <div class="resource-list" id="resourceList"></div>
+        </section>
+      </section>
+
+      <section class="editor-view hidden" id="editorView">
+        <header class="editor-header">
+          <div class="crumbs" id="breadcrumbs"></div>
+          <div class="header-actions">
+            <span class="save-state" id="saveState">已保存</span>
+            <button class="icon-btn" id="favoriteBtn" title="收藏">☆</button>
+            <button class="icon-btn" id="deleteBtn" title="移至回收站">⌫</button>
+            <button class="more-btn" id="exportBtn">导出笔记</button>
+            <button class="back-btn" id="backHomeBtn">返回地图</button>
+          </div>
+        </header>
+        <div class="editor-layout">
+          <article class="paper">
+            <input class="note-title" id="noteTitle" placeholder="未命名笔记" maxlength="80" />
+            <div class="metadata-row"><div id="tagList" class="tag-list"></div><button id="addTagBtn" class="add-tag">＋ 标签</button><span class="last-edit" id="lastEdit"></span></div>
+            <div class="toolbar" role="toolbar" aria-label="富文本工具栏">
+              <button data-command="bold" title="加粗"><b>B</b></button><button data-command="italic" title="斜体"><i>I</i></button><button data-command="underline" title="下划线"><u>U</u></button><span></span>
+              <button data-block="h1">一级标题</button><button data-block="h2">二级标题</button><button data-block="h3">三级标题</button><button data-block="p">正文</button><span></span>
+              <button data-command="insertUnorderedList" title="无序列表">• 列表</button><button data-command="insertOrderedList" title="有序列表">1. 列表</button><button id="checklistBtn" title="待办清单">☑</button><span></span>
+              <button id="imageBtn" title="插入图片">▧ 图片</button><input id="imageInput" type="file" accept="image/*" hidden /><button id="linkBtn" title="插入链接">↗ 链接</button>
+            </div>
+            <div id="editor" class="rich-editor" contenteditable="true" data-placeholder="开始记录吧。用工具栏添加一级、二级标题；标题会自动出现在右侧大纲中。"></div>
+          </article>
+          <aside class="outline-panel">
+            <div class="outline-top"><div><p>文章结构</p><small id="wordCount">0 字</small></div><button id="collapseAllBtn">全部折叠</button></div>
+            <div class="outline-tip">点击一级标题，可折叠它和其下的全部内容。</div>
+            <div id="outline" class="outline"></div>
+            <div class="related"><p>整理建议</p><button id="addTodoBtn">＋ 添加复习待办</button><button id="copyLinkBtn">⌘ 复制笔记链接</button></div>
+          </aside>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div id="contextMenu" class="context-menu hidden"></div>
+  <input type="file" id="backupFile" accept=".json" hidden />
+  <div id="modalRoot"></div>
+  <div id="toast" class="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>
