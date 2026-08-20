@@ -113,6 +113,16 @@ document.querySelectorAll('[data-block]').forEach(b=>b.onclick=()=>command('form
 byId('checklistBtn').onclick=insertChecklist;
 byId('imageBtn').onclick=()=>byId('imageInput').click();byId('imageInput').onchange=e=>{insertImage(e.target.files[0]);e.target.value=''};
 byId('linkBtn').onclick=()=>{const url=prompt('输入链接地址');if(url)command('createLink',url)};
+// 文字颜色
+let lastColor='#c0392b';
+const colorPanel=byId('colorPanel'),colorBtn=byId('fontColorBtn');
+function applyColor(color){command('foreColor',color);lastColor=color;colorBtn.querySelector('.color-a').style.color=color;colorBtn.querySelector('.color-bar').style.background=color;byId('customColor').value=color;colorPanel.classList.add('hidden')}
+colorBtn.onclick=(e)=>{e.stopPropagation();colorPanel.classList.toggle('hidden')};
+colorPanel.querySelectorAll('[data-color]').forEach(b=>b.onclick=()=>applyColor(b.dataset.color));
+byId('customColor').oninput=e=>applyColor(e.target.value);
+byId('clearColorBtn').onclick=()=>{command('foreColor','#30362f');toast('已重置为默认颜色')};
+document.addEventListener('click',()=>colorPanel.classList.add('hidden'));
+colorPanel.onclick=e=>e.stopPropagation();
 byId('addTagBtn').onclick=addTag;
 byId('favoriteBtn').onclick=()=>{const n=current();n.favorite=!n.favorite;save();openNote(n.id);toast(n.favorite?'已加入收藏':'已取消收藏')};
 byId('deleteBtn').onclick=moveTrash;byId('exportBtn').onclick=exportNote;byId('collapseAllBtn').onclick=()=>{const hs=[...byId('editor').querySelectorAll('h1')];const shouldFold=hs.some(h=>!h.classList.contains('folded'));hs.forEach(h=>toggleSection(h,shouldFold));byId('collapseAllBtn').textContent=shouldFold?'全部展开':'全部折叠'};
