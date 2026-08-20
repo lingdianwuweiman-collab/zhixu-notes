@@ -243,7 +243,7 @@ function openCloudModal(){
     byId('cloudUpload').textContent='上传中…';
     try{
       let id=cloudConfig.binId;
-      const headers={'X-Master-Key':cloudConfig.apiKey,'Content-Type':'application/json'};
+      const headers={'X-Master-Key':cloudConfig.apiKey,'Content-Type':'application/json','X-Bin-Private':'false'};
       if(id){
         await fetch('https://api.jsonbin.io/v3/b/'+id,{method:'PUT',headers,body:JSON.stringify(state)});
       }else{
@@ -282,7 +282,7 @@ function silentUpload(){
   try{
     fetch('https://api.jsonbin.io/v3/b/'+cloudConfig.binId,{
       method:'PUT',
-      headers:{'X-Master-Key':cloudConfig.apiKey,'Content-Type':'application/json'},
+      headers:{'X-Master-Key':cloudConfig.apiKey,'Content-Type':'application/json','X-Bin-Private':'false'},
       body:payload,
       keepalive:true
     }).catch(()=>{});
