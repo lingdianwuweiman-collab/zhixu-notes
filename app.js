@@ -53,7 +53,7 @@ function renderMap(){
   const diagram=document.createElement('div');diagram.className='tree-diagram';const root=document.createElement('div');root.className='diagram-node diagram-root';root.innerHTML='<b>我的学习</b><small>知识树根目录</small>';diagram.append(root);
   const level=document.createElement('div');level.className='diagram-children diagram-root-children';roots.forEach(node=>level.append(buildFolderDiagram(node)));diagram.append(level);canvas.append(diagram);
 }
-function buildFolderDiagram(node){const branch=document.createElement('div');branch.className='diagram-branch';const files=liveNotes().filter(note=>note.parentId===node.id);const folder=document.createElement('button');folder.className='diagram-node diagram-folder';folder.innerHTML=`<i>▣</i><span><b>${escapeHtml(node.name)}</b><small>文件夹 · ${countNotes(node)} 个文件</small></span>`;folder.onclick=()=>{node.collapsed=!node.collapsed;save();renderHome()};branch.append(folder);if(!node.collapsed&&((node.children||[]).length||files.length)){const children=document.createElement('div');children.className='diagram-children';(node.children||[]).forEach(child=>children.append(buildFolderDiagram(child)));files.forEach(note=>{const file=document.createElement('button');file.className='diagram-node diagram-file';file.innerHTML=`<i>▤</i><span><b>${escapeHtml(note.title)}</b><small>学习笔记文件</small></span>`;file.onclick=()=>openNote(note.id);children.append(file)});branch.append(children)}return branch}
+function buildFolderDiagram(node){const branch=document.createElement('div');branch.className='diagram-branch';const files=liveNotes().filter(note=>note.parentId===node.id);const folder=document.createElement('button');folder.className='diagram-node diagram-folder';folder.dataset.id=node.id;folder.dataset.type='folder';folder.innerHTML=`<i>▣</i><span><b>${escapeHtml(node.name)}</b><small>文件夹 · ${countNotes(node)} 个文件</small></span>`;folder.onclick=()=>{node.collapsed=!node.collapsed;save();renderHome()};branch.append(folder);if(!node.collapsed&&((node.children||[]).length||files.length)){const children=document.createElement('div');children.className='diagram-children';(node.children||[]).forEach(child=>children.append(buildFolderDiagram(child)));files.forEach(note=>{const file=document.createElement('button');file.className='diagram-node diagram-file';file.innerHTML=`<i>▤</i><span><b>${escapeHtml(note.title)}</b><small>学习笔记文件</small></span>`;file.onclick=()=>openNote(note.id);children.append(file)});branch.append(children)}return branch}
 function renderStartDanmaku(){
   const stage=byId('danmakuStage');if(!stage)return;stage.innerHTML='';
   const quotes=['先完成，再完美。','今天的积累，是明天的底气。','把问题拆小，把行动做实。','每一次理解，都是向前一步。','学习不是赶路，是长出自己的根。','代码会记住你的耐心。','保持好奇，保持输入。','慢一点，也是在前进。'];
@@ -230,7 +230,7 @@ function showTreeContextMenu(e,type,id){
   ctxTarget={type,id};
   const menu=byId('contextMenu');
   menu.innerHTML=type==='folder'
-    ?'<button class="ctx-item" data-act="add">＋ 添加子节点</button><button class="ctx-item ctx-danger" data-act="delete">⌫ 删除节点</button>'
+    ?'<button class="ctx-item" data-act="add">＋ 添加子节点</button><button class="ctx-item" data-act="rename">✎ 重命名文件夹</button><button class="ctx-item ctx-danger" data-act="delete">⌫ 删除节点</button>'
     :'<button class="ctx-item ctx-danger" data-act="delete">⌫ 移至回收站</button>';
   showMenuAt(e.clientX,e.clientY);
 }
@@ -302,6 +302,16 @@ function deleteNote(id){
   if(currentId===id)renderHome();else{renderTree();renderMap();}
   toast('已移至回收站');
 }
+function renameFolder(id){
+  const node=getNode(id);if(!node)return toast('文件夹不存在');
+  flushEditor();
+  modal('重命名文件夹','<label>文件夹名称<input id="folderName" value="'+escapeHtml(node.name)+'" placeholder="输入新的文件夹名称"></label>',()=>{
+    const name=byId('folderName').value.trim();
+    if(!name)return toast('请输入文件夹名称');
+    node.name=name;save();closeModal();renderTree();renderMap();toast('文件夹已重命名');
+  },'保存');
+  byId('folderName').onkeydown=e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();byId('confirmModal').click()}};
+}
 function deleteNode(id){
   const node=getNode(id);if(!node)return;
   const cnt=countNotes(node);
@@ -319,7 +329,9 @@ byId('contextMenu').addEventListener('click',(e)=>{
   e.stopPropagation();
   if(ctxMode==='tree'){
     const act=btn.dataset.act;const t=ctxTarget;hideContextMenu();
+    if(!t)return;
     if(act==='add')askBranch(t.id);
+    else if(act==='rename'&&t.type==='folder')renameFolder(t.id);
     else if(act==='delete'){if(t.type==='folder')deleteNode(t.id);else deleteNote(t.id)}
   }else if(ctxMode==='editor'){
     // 编辑器右键菜单
@@ -349,7 +361,7 @@ document.addEventListener('contextmenu',function(e){
   // 关闭颜色面板
   editorColorPanel.classList.add('hidden');
   // 判断右键目标
-  const treeRow=e.target.closest('.tree-row');
+  const treeRow=e.target.closest('.tree-row,.diagram-folder');
   const editor=byId('editor');
   if(treeRow){
     const id=treeRow.dataset.id;
