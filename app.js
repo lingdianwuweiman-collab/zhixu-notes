@@ -423,20 +423,49 @@ function sameCloudData(left,right){
   const canonical=value=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])])):value;
   return JSON.stringify(canonical(left))===JSON.stringify(canonical(right));
 }
+// JSONBin 免费单条记录限制为 100KB，预留少量封装空间。
+const CLOUD_RECORD_LIMIT=99000;
+function bytesToBase64(bytes){
+  let binary='';for(let offset=0;offset<bytes.length;offset+=32768)binary+=String.fromCharCode(...bytes.subarray(offset,offset+32768));
+  return btoa(binary);
+}
+async function packCloudData(payload){
+  const bytes=new Blob([payload]).size;
+  if(bytes<=CLOUD_RECORD_LIMIT)return JSON.parse(payload);
+  if(typeof CompressionStream==='undefined')throw new Error('笔记超过 100KB，当前浏览器不支持自动压缩，请更新浏览器后重试；本地笔记已保留');
+  const stream=new Blob([payload]).stream().pipeThrough(new CompressionStream('gzip'));
+  const compressed=new Uint8Array(await new Response(stream).arrayBuffer());
+  const record={format:'zhixu-gzip-v1',data:bytesToBase64(compressed)};
+  const packedBytes=new Blob([JSON.stringify(record)]).size;
+  if(packedBytes>CLOUD_RECORD_LIMIT)throw new Error('笔记原大小 '+Math.ceil(bytes/1024)+'KB，压缩后仍为 '+Math.ceil(packedBytes/1024)+'KB，超过云端免费单条 100KB 限制。请先导出备份，再缩小笔记内的图片后重试');
+  return record;
+}
+async function unpackCloudData(record){
+  if(record?.format!=='zhixu-gzip-v1')return record; // 兼容此前未压缩的云端备份。
+  if(typeof DecompressionStream==='undefined')throw new Error('当前浏览器不支持还原压缩笔记，请更新浏览器后重试');
+  try{
+    if(typeof record.data!=='string')throw new Error('缺少压缩内容');
+    const bytes=Uint8Array.from(atob(record.data),character=>character.charCodeAt(0));
+    const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return JSON.parse(await new Response(stream).text());
+  }catch(e){throw new Error('云端压缩数据无法还原，本地笔记未更改：'+e.message)}
+}
 async function readCloudSnapshot(binId,apiKey){
   if(!validBinId(binId))throw new Error('Bin ID 无效');
-  return cloudRequest('/'+binId+'/latest',apiKey);
+  const result=await cloudRequest('/'+binId+'/latest',apiKey);
+  return {...result,record:await unpackCloudData(result.record)};
 }
 async function uploadCloudData(binId,apiKey,payload){
   if(binId&&!validBinId(binId))throw new Error('Bin ID 无效，请清空后重新上传，或填写正确的 ID');
   const snapshot=JSON.parse(payload);
-  const result=await cloudRequest(binId?'/'+binId:'',apiKey,{method:binId?'PUT':'POST',headers:{'Content-Type':'application/json',...(binId?{'X-Bin-Versioning':'true'}:{'X-Bin-Private':'true','X-Bin-Name':'Zhixu Notes'})},body:payload});
+  validateCloudData(JSON.parse(payload));
+  const packedRecord=await packCloudData(payload);
+  const result=await cloudRequest(binId?'/'+binId:'',apiKey,{method:binId?'PUT':'POST',headers:{'Content-Type':'application/json',...(binId?{'X-Bin-Versioning':'true'}:{'X-Bin-Private':'true','X-Bin-Name':'Zhixu Notes'})},body:JSON.stringify(packedRecord)});
   // POST 返回 metadata.id，PUT 返回 metadata.parentId。
   const id=binId?(result.metadata?.parentId||result.metadata?.id):result.metadata?.id;
   if(!validBinId(id)||(binId&&id!==binId))throw new Error('服务器没有返回有效的 Bin ID，无法确认上传成功');
   try{
-    if(!sameCloudData(snapshot,result.record))throw new Error('上传响应内容与本次笔记不一致');
-    validateCloudData(JSON.parse(JSON.stringify(result.record)));
+    if(!sameCloudData(packedRecord,result.record))throw new Error('上传响应内容与本次笔记不一致');
     const downloaded=await readCloudSnapshot(id,apiKey);
     if(!sameCloudData(snapshot,downloaded.record))throw new Error('重新下载的云端内容与本次上传不一致，可能被其他设备覆盖');
   }catch(e){e.binId=id;throw e}
@@ -452,7 +481,7 @@ function applyCloudData(data){
 }
 function openCloudModal(){
   flushEditor();
-  modal('云端保存与下载（JSONBin.io）','<p style="font-size:12px;line-height:1.7;color:#707970">上传：用当前全部笔记覆盖云端内容。<br>下载：读取同一份云端存储的最新内容，恢复到本地。<br>首次上传自动建立云端存储，以后一直更新这一份；存储 ID 会自动记住。</p>'
+  modal('云端保存与下载（JSONBin.io）','<p style="font-size:12px;line-height:1.7;color:#707970">上传：用当前全部笔记覆盖云端内容。<br>下载：读取同一份云端存储的最新内容，恢复到本地。<br>首次上传自动建立云端存储，以后一直更新这一份；存储 ID 会自动记住。数据较大时自动无损压缩，下载自动还原。</p>'
     +'<label>API Key（X-Master-Key）<input id="cloudApiKey" type="password" autocomplete="off" value="'+escapeHtml(cloudConfig.apiKey)+'"></label>'
     +'<label>云端存储 ID（自动记住，请保持不变）<input id="cloudBinId" value="'+escapeHtml(cloudConfig.binId)+'" placeholder="首次上传后自动生成"></label>'
     +'<p id="cloudStatus" role="status" style="font-size:12px;overflow-wrap:anywhere"></p>',closeModal,'关闭');
@@ -482,7 +511,7 @@ function openCloudModal(){
     try{
       const config=readInputs();if(!config.apiKey)throw new Error('请填写 API Key');
       if(config.binId&&!window.confirm('上传将覆盖这个 Bin 中的云端数据，确定继续吗？'))return;
-      flushEditor();const payload=JSON.stringify(state);setBusy(true);status('正在上传并重新下载核对，请稍候…');
+      flushEditor();const payload=JSON.stringify(state);setBusy(true);status('正在处理、上传并重新下载核对，请稍候…');
       const id=await uploadCloudData(config.binId,config.apiKey,payload);
       cloudConfig.binId=id;saveCloudConfig();byId('cloudBinId').value=id;
       const url=new URL(location.href);url.hash='bin='+id;history.replaceState(null,'',url.href);

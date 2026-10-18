@@ -3,7 +3,7 @@ const source=fs.readFileSync('app.js','utf8');
 const cloud=source.slice(source.indexOf('const CLOUD_CFG_KEY='),source.indexOf("byId('cloudSyncBtn').onclick="));
 const memory=new Map(),requests=[],nodes=new Map();let responder;
 const element=id=>{if(!nodes.has(id))nodes.set(id,{value:'',textContent:'',innerHTML:'',disabled:false,style:{},classList:{add(){},remove(){},toggle(){}},querySelectorAll:()=>[],querySelector:s=>element(s)});return nodes.get(id)};
-const context=vm.createContext({STORAGE_KEY:'zhixu-study-space-v1',localStorage:{getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)},byId:element,normalizeTreeTypes:()=>{},defaultResources:()=>[],setTimeout,clearTimeout,AbortController,URL,location:{href:'https://example.test/'},history:{replaceState(){}},window:{confirm:()=>true,scrollTo(){}},escapeHtml:v=>v,modal(){},closeModal(){},renderTree(){},renderMap(){},renderResources(){},renderStartDanmaku(){},updateStats(){},renderTags(){},renderOutline(){},toast(){},formatDate:v=>v,now:()=>new Date().toISOString(),save(){memory.set('zhixu-study-space-v1',JSON.stringify(context.state))},currentId:null,searchTimer:null,fetch:async(url,options)=>{requests.push({url,options});return responder(url,options)}});
+const context=vm.createContext({Blob,Response,CompressionStream,DecompressionStream,Uint8Array,btoa,atob,STORAGE_KEY:'zhixu-study-space-v1',localStorage:{getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)},byId:element,normalizeTreeTypes:()=>{},defaultResources:()=>[],setTimeout,clearTimeout,AbortController,URL,location:{href:'https://example.test/'},history:{replaceState(){}},window:{confirm:()=>true,scrollTo(){}},escapeHtml:v=>v,modal(){},closeModal(){},renderTree(){},renderMap(){},renderResources(){},renderStartDanmaku(){},updateStats(){},renderTags(){},renderOutline(){},toast(){},formatDate:v=>v,now:()=>new Date().toISOString(),save(){memory.set('zhixu-study-space-v1',JSON.stringify(context.state))},currentId:null,searchTimer:null,fetch:async(url,options)=>{requests.push({url,options});return responder(url,options)}});
 vm.runInContext(cloud,context);
 for(const name of ['current','syncNote','renderHome','openNote']){const start=source.indexOf('function '+name+'('),end=source.indexOf('\nfunction ',start+1);vm.runInContext(source.slice(start,end),context)}
 const run=code=>vm.runInContext(code,context),id='6a86e78bf5f4af5e292cc515';
@@ -39,6 +39,23 @@ await element('cloudUpload').onclick();assert.match(element('cloudStatus').textC
 // Checkbox DOM properties must be serialized as attributes before taking a snapshot.
 context.state=data();context.currentId='a';element('noteTitle').value='旧标题';const editor=element('editor');editor.innerHTML='<p>old</p>';
 editor.querySelectorAll=()=>[{checked:true,toggleAttribute(name,value){if(value)editor.innerHTML='<input type="checkbox" checked>'}}];run('flushEditor()');assert.match(context.state.notes[0].content,/checked/);
+// Over-100KB notes are compressed and restored exactly, including embedded images.
+const {randomBytes}=require('node:crypto');const large=data();large.notes[0].content='<p>'+('中文笔记与 emoji 🌳'.repeat(12000))+'</p><img src="data:image/png;base64,'+randomBytes(32000).toString('base64')+'">';
+context.largePayload=JSON.stringify(large);assert.ok(Buffer.byteLength(context.largePayload)>100000);server();await run(`uploadCloudData('${id}', 'test-key', largePayload)`);
+const encoded=JSON.parse(requests.at(-2).options.body);assert.equal(encoded.format,'zhixu-gzip-v1');assert.ok(Buffer.byteLength(requests.at(-2).options.body)<99000);
+const restored=await run(`readCloudSnapshot('${id}', 'test-key')`);assert.deepEqual(JSON.parse(JSON.stringify(restored.record)),large);
+// Local existing backup is used only for round-trip validation; no data is uploaded.
+const backupPath='BeiFeng/知序学习笔记备份_2026-09-12.json';if(fs.existsSync(backupPath)){
+  const original=JSON.parse(fs.readFileSync(backupPath,'utf8').replace(/^\uFEFF/,''));context.backupPayload=JSON.stringify(original);
+  const packed=await run('packCloudData(backupPayload)');context.packedBackup=packed;assert.ok(Buffer.byteLength(JSON.stringify(packed))<99000);
+  const decoded=await run('unpackCloudData(packedBackup)');assert.deepEqual(JSON.parse(JSON.stringify(decoded)),original);
+  console.log('Existing backup compression verified: '+Buffer.byteLength(context.backupPayload)+' -> '+Buffer.byteLength(JSON.stringify(packed))+' bytes; no network transmission.');
+}
+const tooLarge=data();tooLarge.notes[0].content=randomBytes(140000).toString('base64');context.tooLargePayload=JSON.stringify(tooLarge);const callCount=requests.length;
+await assert.rejects(run(`uploadCloudData('${id}', 'test-key', tooLargePayload)`),/压缩后仍/);assert.equal(requests.length,callCount);
+await assert.rejects(run("unpackCloudData({format:'zhixu-gzip-v1',data:'invalid compressed data'})"),/无法还原/);
+context.CompressionStream=undefined;await assert.rejects(run('packCloudData(largePayload)'),/不支持自动压缩/);context.CompressionStream=CompressionStream;
+console.log('PASS: large compressed notes and images round trip; old data compatibility; corrupt gzip rejection; local capacity preflight; unsupported-browser message.');
 console.log('PASS: real POST/PUT shapes; response/read-back mismatch rejection; fresh reads; immediate navigation saves; complete upload-download round trip; recovery backup; cancel; error handling.');
 })().catch(e=>{console.error(e);process.exitCode=1});
 
