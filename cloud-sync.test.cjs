@@ -26,11 +26,14 @@ context.state=data();context.currentId='a';element('noteTitle').value='刚改的
 run("openNote('a')");element('editor').innerHTML='<p>立刻切换前的修改</p>';run("openNote('b')");assert.equal(context.state.notes[0].content,'<p>立刻切换前的修改</p>');
 // Exercise actual upload/download button handlers with a realistic mock server.
 context.currentId='a';element('noteTitle').value='最新版本';element('editor').innerHTML='<p>最新正文</p>';run('openCloudModal()');element('cloudApiKey').value='test-key';element('cloudBinId').value=id;server();await element('cloudUpload').onclick();assert.match(element('cloudStatus').textContent,/核对一致/);
+// Repeated uploads, including a cleared input, must update the same Bin.
+element('cloudBinId').value='';await element('cloudUpload').onclick();assert.equal(requests.at(-2).options.method,'PUT');assert.equal(requests.at(-2).url,'https://api.jsonbin.io/v3/b/'+id);assert.equal(element('cloudBinId').value,id);
+assert.ok(!source.includes('cloudNewBin'));
 const uploaded=JSON.parse(requests.at(-2).options.body);assert.equal(uploaded.notes[0].content,'<p>最新正文</p>');
 element('editor').innerHTML='<p>尚未上传的另一次编辑</p>';await element('cloudDownload').onclick();assert.deepEqual(JSON.parse(JSON.stringify(context.state)),uploaded);assert.equal(JSON.parse(memory.get('zhixu-before-cloud-download-v1')).notes[0].content,'<p>尚未上传的另一次编辑</p>');assert.equal(context.currentId,null);
 context.window.confirm=()=>false;const before=JSON.stringify(context.state);await element('cloudDownload').onclick();assert.equal(JSON.stringify(context.state),before);assert.match(element('cloudStatus').textContent,/取消/);assert.equal(element('cloudDownload').disabled,false);
 // Failed read-back must not claim success, and must retain a newly created ID.
-context.window.confirm=()=>true;run('openCloudModal()');element('cloudApiKey').value='test-key';element('cloudBinId').value='';
+context.window.confirm=()=>true;run("cloudConfig.binId='';openCloudModal()");element('cloudApiKey').value='test-key';element('cloudBinId').value='';
 responder=async(url,o)=>{if(o.method==='POST')return json({record:JSON.parse(o.body),metadata:{id}});throw Error('Network unavailable')};
 await element('cloudUpload').onclick();assert.match(element('cloudStatus').textContent,/未确认成功/);assert.equal(element('cloudBinId').value,id);assert.equal(element('cloudUpload').disabled,false);
 // Checkbox DOM properties must be serialized as attributes before taking a snapshot.

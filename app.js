@@ -452,18 +452,19 @@ function applyCloudData(data){
 }
 function openCloudModal(){
   flushEditor();
-  modal('云端保存与下载（JSONBin.io）','<p style="font-size:12px;line-height:1.7;color:#707970">上传保存全部笔记、文件夹和学习资源。首次上传会生成 Bin ID。<br>换设备时需要相同的 API Key 和 Bin ID（或下方的云端网址）。下载会覆盖本地数据，请先导出备份。<br>仅点击上传时保存到云端，不会在关闭页面时覆盖云端。</p>'
+  modal('云端保存与下载（JSONBin.io）','<p style="font-size:12px;line-height:1.7;color:#707970">上传：用当前全部笔记覆盖云端内容。<br>下载：读取同一份云端存储的最新内容，恢复到本地。<br>首次上传自动建立云端存储，以后一直更新这一份；存储 ID 会自动记住。</p>'
     +'<label>API Key（X-Master-Key）<input id="cloudApiKey" type="password" autocomplete="off" value="'+escapeHtml(cloudConfig.apiKey)+'"></label>'
-    +'<label>Bin ID（首次上传留空）<input id="cloudBinId" value="'+escapeHtml(cloudConfig.binId)+'" placeholder="首次上传后自动生成"></label>'
+    +'<label>云端存储 ID（自动记住，请保持不变）<input id="cloudBinId" value="'+escapeHtml(cloudConfig.binId)+'" placeholder="首次上传后自动生成"></label>'
     +'<p id="cloudStatus" role="status" style="font-size:12px;overflow-wrap:anywhere"></p>',closeModal,'关闭');
   const actions=byId('modalRoot').querySelector('.modal-actions');
-  actions.innerHTML='<button id="cloudSaveCfg">保存设置</button><button id="cloudUpload">上传到云端</button><button id="cloudDownload">从云端下载</button><button id="cloudNewBin">新建云端备份</button><button id="cloudRecovery">导出覆盖前备份</button><button id="confirmModal" class="primary">关闭</button>';
+  actions.classList.add('cloud-actions');
+  actions.innerHTML='<button id="cloudUpload" class="primary">上传到云端</button><button id="cloudDownload" class="primary">从云端下载</button><button id="cloudSaveCfg">保存设置</button><button id="cloudRecovery">导出覆盖前备份</button><button id="confirmModal">关闭</button>';
   const statusEl=byId('cloudStatus');
   const status=(message,error=false)=>{statusEl.textContent=message;statusEl.style.color=error?'#b25d55':'#50745c'};
   const readInputs=()=>{
-    const config={apiKey:byId('cloudApiKey').value.trim(),binId:byId('cloudBinId').value.trim()};
+    const config={apiKey:byId('cloudApiKey').value.trim(),binId:byId('cloudBinId').value.trim()||cloudConfig.binId||''};
     if(config.binId&&!validBinId(config.binId))throw new Error('Bin ID 应为 24 位字母数字；旧的 undefined 请清空后重新上传');
-    cloudConfig=config;saveCloudConfig();return {...config};
+    byId('cloudBinId').value=config.binId;cloudConfig=config;saveCloudConfig();return {...config};
   };
   let busy=false;
   const setBusy=value=>{busy=value;actions.querySelectorAll('button').forEach(b=>b.disabled=value);byId('cloudApiKey').disabled=value;byId('cloudBinId').disabled=value};
@@ -471,7 +472,6 @@ function openCloudModal(){
   byId('confirmModal').onclick=()=>{if(!busy)closeModal()};
   byId('modalRoot').querySelector('.modal-cover').onclick=e=>{if(e.target===e.currentTarget&&!busy)closeModal()};
   byId('cloudSaveCfg').onclick=()=>{try{readInputs();status('设置已保存')}catch(e){status(e.message,true)}};
-  byId('cloudNewBin').onclick=()=>{byId('cloudBinId').value='';status('已清空输入框。点击上传会创建新的云端备份，原备份仍保留。')};
   byId('cloudRecovery').onclick=()=>{
     const backup=localStorage.getItem(CLOUD_RECOVERY_KEY);
     if(!backup)return status('暂无覆盖前备份');
@@ -511,5 +511,5 @@ byId('cloudSyncBtn').onclick=openCloudModal;
   if(!binId)return;
   if(!validBinId(binId)){setTimeout(()=>toast('云端链接的 Bin ID 无效，请重新上传生成正确链接'),500);return}
   cloudConfig.binId=binId;saveCloudConfig();
-  setTimeout(()=>{openCloudModal();byId('cloudStatus').textContent='已识别云端 Bin ID，请填写 API Key，然后点击「从云端下载」。'},500);
+  setTimeout(()=>{openCloudModal();byId('cloudStatus').textContent='已连接此云端存储：上传覆盖云端，下载恢复最新内容。'},500);
 })();
