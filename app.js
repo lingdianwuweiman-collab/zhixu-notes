@@ -69,12 +69,20 @@ function countNotes(node){return state.notes.filter(n=>!n.deleted&&isDescendant(
 function isDescendant(nodeId,ancestorId){let node=getNode(nodeId);while(node){if(node.id===ancestorId)return true;node=getParent(node.id)}return false}
 function findFirstNote(node){const direct=noteForNode(node.id);if(direct)return direct;for(const c of node.children||[]){const n=findFirstNote(c);if(n)return n}return null}
 function updateStats(){const notes=liveNotes();byId('noteTotal').textContent=notes.length;byId('tagTotal').textContent=new Set(notes.flatMap(n=>n.tags)).size;byId('wordTotal').textContent=notes.reduce((sum,n)=>sum+textOf(n.content).replace(/\s/g,'').length,0);byId('favoriteCount').textContent=notes.filter(n=>n.favorite).length;byId('trashCount').textContent=state.notes.filter(n=>n.deleted).length;}
-function renderHome(){view='home';currentId=null;byId('appShell').classList.remove('hidden');byId('welcomeView').classList.remove('hidden');byId('editorView').classList.add('hidden');renderTree();renderMap();renderResources();updateStats();}
+function renderHome(){flushEditor();view='home';currentId=null;byId('appShell').classList.remove('hidden');byId('welcomeView').classList.remove('hidden');byId('editorView').classList.add('hidden');renderTree();renderMap();renderResources();updateStats();}
 function startLearning(){byId('startView').classList.add('hidden');renderHome()}
 function createNote(parentId){const node=getNode(parentId); if(!node)return askBranch(null);const note={id:uid(),parentId,title:node.name+' 学习笔记',content:defaultContent(),tags:[],favorite:false,createdAt:now(),updatedAt:now(),deleted:false};state.notes.push(note);save();openNote(note.id);}
-function openNote(id){const note=state.notes.find(n=>n.id===id);if(!note)return;currentId=id;view='editor';byId('welcomeView').classList.add('hidden');byId('editorView').classList.remove('hidden');byId('noteTitle').value=note.title;byId('editor').innerHTML=note.content;byId('lastEdit').textContent='更新于 '+formatDate(note.updatedAt);byId('favoriteBtn').classList.toggle('is-favorite',note.favorite);byId('favoriteBtn').textContent=note.favorite?'★':'☆';renderTags();renderOutline();renderTree();window.scrollTo(0,0)}
+function openNote(id){flushEditor();const note=state.notes.find(n=>n.id===id);if(!note)return;currentId=id;view='editor';byId('welcomeView').classList.add('hidden');byId('editorView').classList.remove('hidden');byId('noteTitle').value=note.title;byId('editor').innerHTML=note.content;byId('lastEdit').textContent='更新于 '+formatDate(note.updatedAt);byId('favoriteBtn').classList.toggle('is-favorite',note.favorite);byId('favoriteBtn').textContent=note.favorite?'★':'☆';renderTags();renderOutline();renderTree();window.scrollTo(0,0)}
 function current(){return state.notes.find(n=>n.id===currentId)}
-function syncNote(){const note=current();if(!note)return;note.title=byId('noteTitle').value.trim()||'未命名笔记';note.content=byId('editor').innerHTML;note.updatedAt=now();byId('lastEdit').textContent='更新于 '+formatDate(note.updatedAt);byId('saveState').textContent='已保存';save();renderTree()}
+function syncNote(){
+  const note=current();if(!note)return;
+  const editor=byId('editor');
+  editor.querySelectorAll('input[type="checkbox"]').forEach(input=>input.toggleAttribute('checked',input.checked));
+  const title=byId('noteTitle').value.trim()||'未命名笔记',content=editor.innerHTML;
+  if(note.title===title&&note.content===content){byId('saveState').textContent='已保存';return}
+  note.title=title;note.content=content;note.updatedAt=now();
+  byId('lastEdit').textContent='更新于 '+formatDate(note.updatedAt);save();renderTree();
+}
 function scheduleSync(){byId('saveState').textContent='正在保存';clearTimeout(searchTimer);searchTimer=setTimeout(()=>{syncNote();renderOutline()},350)}
 function renderTags(){const note=current();const list=byId('tagList');list.innerHTML='';note.tags.forEach(tag=>{const el=document.createElement('span');el.className='tag';el.innerHTML=`#${escapeHtml(tag)} <button title="移除标签">×</button>`;el.querySelector('button').onclick=()=>{note.tags=note.tags.filter(t=>t!==tag);save();renderTags()};list.append(el)})}
 function renderOutline(){const outline=byId('outline'),editor=byId('editor');outline.innerHTML='';const all=[...editor.querySelectorAll('h1,h2,h3')];byId('wordCount').textContent=textOf(editor.innerHTML).replace(/\s/g,'').length+' 字';if(!all.length){outline.innerHTML='<div class="outline-item">添加标题后会显示结构</div>';return}all.forEach((heading,index)=>{if(!heading.dataset.sid)heading.dataset.sid=uid();const item=document.createElement('div');const lev=heading.tagName.slice(1);item.className=`outline-item level-${lev}`;item.textContent=heading.textContent||'未命名标题';item.onclick=()=>{if(lev==='1')toggleSection(heading);else{heading.scrollIntoView({behavior:'smooth',block:'center'});flash(heading)}};outline.append(item)})}
@@ -106,6 +114,9 @@ byId('addRootBtn').onclick=()=>askBranch(null);
 byId('backHomeBtn').onclick=renderHome;
 byId('noteTitle').oninput=scheduleSync;
 byId('editor').oninput=scheduleSync;
+byId('editor').onchange=scheduleSync;
+window.addEventListener('pagehide',()=>flushEditor());
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushEditor()});
 byId('editor').onclick=(e)=>{if(e.target.tagName==='H1')toggleSection(e.target)};
 document.querySelectorAll('[data-command]').forEach(b=>b.onclick=()=>command(b.dataset.command));
 document.querySelectorAll('[data-block]').forEach(b=>b.onclick=()=>command('formatBlock',b.dataset.block));
@@ -354,6 +365,7 @@ document.addEventListener('contextmenu',function(e){
 
 // ===== 整体备份：导出 / 导入全部笔记 =====
 function exportBackup(){
+  flushEditor();
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([JSON.stringify(state,null,2)],{type:'application/json;charset=utf-8'}));
   a.download='知序学习笔记备份_'+new Date().toISOString().slice(0,10)+'.json';
@@ -369,7 +381,7 @@ function importBackup(file){
     modal('导入备份','<p style="font-size:13px;line-height:1.7;color:#566057;margin:0">导入将<strong>覆盖当前全部数据</strong>，建议先导出当前备份。确定继续吗？</p>',()=>{
       normalizeTreeTypes(data.tree);
       data.resources??=defaultResources();data.todos??=[];
-      state=data;closeModal();save();renderHome();renderStartDanmaku();toast('备份导入成功');
+      flushEditor();currentId=null;state=data;closeModal();save();renderHome();renderStartDanmaku();toast('备份导入成功');
     },'导入');
   };
   r.readAsText(file);
@@ -378,124 +390,126 @@ byId('exportBackupBtn').onclick=exportBackup;
 byId('importBackupBtn').onclick=()=>byId('backupFile').click();
 byId('backupFile').onchange=e=>{importBackup(e.target.files[0]);e.target.value=''};
 
-// ===== 云端同步：基于 JSONBin.io 保存/恢复全部数据 =====
+// ===== 云端同步：手动保存和恢复全部数据 =====
 const CLOUD_CFG_KEY='zhixu-cloud-config-v1';
-let cloudConfig=(()=>{try{return JSON.parse(localStorage.getItem(CLOUD_CFG_KEY)||'{}')}catch(e){return {}}})();
+const CLOUD_RECOVERY_KEY='zhixu-before-cloud-download-v1';
+function validBinId(id){return typeof id==='string' && /^[a-f0-9]{24}$/i.test(id)}
+let cloudConfig=(()=>{try{const c=JSON.parse(localStorage.getItem(CLOUD_CFG_KEY)||'{}');return {apiKey:typeof c?.apiKey==='string'?c.apiKey:'',binId:validBinId(c?.binId)?c.binId:''}}catch(e){return {apiKey:'',binId:''}}})();
 function saveCloudConfig(){localStorage.setItem(CLOUD_CFG_KEY,JSON.stringify(cloudConfig))}
-
-// 从云端拉取数据并覆盖当前 state（silent=true 时不弹确认框）
-async function fetchCloudData(binId,apiKey,silent){
-  if(!apiKey)throw new Error('请先在云端同步中填写 API Key');
-  const headers={'X-Master-Key':apiKey};
-  const res=await fetch('https://api.jsonbin.io/v3/b/'+binId+'/latest',{headers});
-  if(!res.ok)throw new Error('HTTP '+res.status+(res.status===401?'（API Key 错误）':res.status===404?'（Bin 不存在）':''));
-  const j=await res.json();
-  const data=j.record;
-  if(!data.tree||!data.notes)throw new Error('云端数据格式不正确');
-  const apply=()=>{
-    normalizeTreeTypes(data.tree);data.resources??=defaultResources();data.todos??=[];
-    state=data;save();
-    if(currentId){
-      // 如果正在编辑器里，回到首页再重新渲染
-      renderHome();
-    }else{
-      renderTree();renderMap();renderResources();updateStats();
-    }
-    renderStartDanmaku();
-    toast('已从云端加载笔记');
-  };
-  if(silent){apply();return true}
-  return new Promise(resolve=>{
-    modal('确认下载','<p style="font-size:13px;line-height:1.7;color:#566057;margin:0">将用云端数据<strong>覆盖当前全部笔记</strong>，确定吗？</p>',()=>{
-      apply();closeModal();resolve(true);
-    },'确定');
-    // 取消按钮不 resolve，保持 pending 即可
-  });
+function validateCloudData(data){
+  if(!data || !Array.isArray(data.tree) || !Array.isArray(data.notes) || (data.todos!==undefined&&!Array.isArray(data.todos)) || (data.resources!==undefined&&!Array.isArray(data.resources)))throw new Error('云端数据格式不正确，本地笔记未更改');
+  const ids=new Set();
+  const checkTree=nodes=>nodes.forEach(n=>{if(!n||typeof n.id!=='string'||ids.has(n.id)||typeof n.name!=='string'||(n.children!==undefined&&!Array.isArray(n.children)))throw new Error('云端文件夹格式不正确');ids.add(n.id);checkTree(n.children||[])});
+  checkTree(data.tree);
+  const noteIds=new Set();
+  data.notes.forEach(n=>{if(!n||typeof n.id!=='string'||noteIds.has(n.id)||typeof n.title!=='string'||typeof n.content!=='string'||!Array.isArray(n.tags)||!n.tags.every(t=>typeof t==='string')||!Number.isFinite(Date.parse(n.updatedAt)))throw new Error('云端笔记格式不正确');noteIds.add(n.id)});
+  (data.resources||[]).forEach(r=>{if(!r||typeof r.name!=='string'||typeof r.url!=='string'||!/^https?:\/\//i.test(r.url)||typeof r.category!=='string')throw new Error('云端资源格式不正确')});
+  normalizeTreeTypes(data.tree);data.todos??=[];data.resources??=defaultResources();return data;
 }
-
+async function cloudRequest(path,apiKey,options={}){
+  if(!apiKey)throw new Error('请填写 API Key');
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),25000);
+  try{
+    const res=await fetch('https://api.jsonbin.io/v3/b'+path,{cache:'no-store',...options,signal:controller.signal,headers:{'X-Master-Key':apiKey,...options.headers}});
+    let result;try{result=await res.json()}catch(e){throw new Error('服务器返回的不是有效 JSON（HTTP '+res.status+'）')}
+    if(!res.ok || result?.message)throw new Error('HTTP '+res.status+'：'+(result?.message||'请求失败'));
+    if(!result||typeof result!=='object')throw new Error('服务器返回了无效结果');
+    return result;
+  }catch(e){if(e.name==='AbortError')throw new Error('请求超时，请重试');throw e}
+  finally{clearTimeout(timer)}
+}
+// 忽略对象属性顺序，但严格比较正文、标题、目录、标签及所有数据字段。
+function sameCloudData(left,right){
+  const canonical=value=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])])):value;
+  return JSON.stringify(canonical(left))===JSON.stringify(canonical(right));
+}
+async function readCloudSnapshot(binId,apiKey){
+  if(!validBinId(binId))throw new Error('Bin ID 无效');
+  return cloudRequest('/'+binId+'/latest',apiKey);
+}
+async function uploadCloudData(binId,apiKey,payload){
+  if(binId&&!validBinId(binId))throw new Error('Bin ID 无效，请清空后重新上传，或填写正确的 ID');
+  const snapshot=JSON.parse(payload);
+  const result=await cloudRequest(binId?'/'+binId:'',apiKey,{method:binId?'PUT':'POST',headers:{'Content-Type':'application/json',...(binId?{'X-Bin-Versioning':'true'}:{'X-Bin-Private':'true','X-Bin-Name':'Zhixu Notes'})},body:payload});
+  // POST 返回 metadata.id，PUT 返回 metadata.parentId。
+  const id=binId?(result.metadata?.parentId||result.metadata?.id):result.metadata?.id;
+  if(!validBinId(id)||(binId&&id!==binId))throw new Error('服务器没有返回有效的 Bin ID，无法确认上传成功');
+  try{
+    if(!sameCloudData(snapshot,result.record))throw new Error('上传响应内容与本次笔记不一致');
+    validateCloudData(JSON.parse(JSON.stringify(result.record)));
+    const downloaded=await readCloudSnapshot(id,apiKey);
+    if(!sameCloudData(snapshot,downloaded.record))throw new Error('重新下载的云端内容与本次上传不一致，可能被其他设备覆盖');
+  }catch(e){e.binId=id;throw e}
+  return id;
+}
+function flushEditor(){clearTimeout(searchTimer);if(currentId)syncNote()}
+function applyCloudData(data){
+  flushEditor();
+  // 先持久化，失败时保持当前内存和界面不变。
+  localStorage.setItem(CLOUD_RECOVERY_KEY,JSON.stringify(state));
+  localStorage.setItem(STORAGE_KEY,JSON.stringify(data));
+  currentId=null;state=data;renderHome();renderStartDanmaku();toast('已从云端恢复全部笔记');
+}
 function openCloudModal(){
-  modal('云端同步（JSONBin.io）','<p style="font-size:12px;line-height:1.7;color:#707970;margin:0 0 8px">把全部笔记保存到<b>私有云端</b>。只有填入你的 API Key 才能读写数据。<br>在新设备打开网址后，在此填入 API Key 即可同步笔记。</p>'
-    +'<label>API Key（X-Master-Key）<input id="cloudApiKey" type="password" placeholder="粘贴你的 Master Key（读写都需要）" value="'+(cloudConfig.apiKey||'')+'"></label>'
-    +'<label>Bin ID（首次上传后自动生成）<input id="cloudBinId" placeholder="例如 6a86e78bf5f4af5e292cc515" value="'+(cloudConfig.binId||'')+'"></label>'
-    +'<p id="cloudStatus" style="font-size:12px;color:#7e9b81;margin:8px 0 0"></p>',closeModal,'关闭');
+  flushEditor();
+  modal('云端保存与下载（JSONBin.io）','<p style="font-size:12px;line-height:1.7;color:#707970">上传保存全部笔记、文件夹和学习资源。首次上传会生成 Bin ID。<br>换设备时需要相同的 API Key 和 Bin ID（或下方的云端网址）。下载会覆盖本地数据，请先导出备份。<br>仅点击上传时保存到云端，不会在关闭页面时覆盖云端。</p>'
+    +'<label>API Key（X-Master-Key）<input id="cloudApiKey" type="password" autocomplete="off" value="'+escapeHtml(cloudConfig.apiKey)+'"></label>'
+    +'<label>Bin ID（首次上传留空）<input id="cloudBinId" value="'+escapeHtml(cloudConfig.binId)+'" placeholder="首次上传后自动生成"></label>'
+    +'<p id="cloudStatus" role="status" style="font-size:12px;overflow-wrap:anywhere"></p>',closeModal,'关闭');
   const actions=byId('modalRoot').querySelector('.modal-actions');
-  actions.innerHTML='<button id="cloudSaveCfg">保存设置</button><button id="cloudUpload">上传到云端</button><button id="cloudDownload">从云端下载</button><button id="confirmModal" class="primary">关闭</button>';
-  byId('confirmModal').onclick=closeModal;
-  const status=(m,c)=>{const el=byId('cloudStatus');el.textContent=m;el.style.color=c||'#7e9b81'};
-  const readInputs=()=>{cloudConfig.apiKey=byId('cloudApiKey').value.trim();cloudConfig.binId=byId('cloudBinId').value.trim();saveCloudConfig()};
-  byId('cloudSaveCfg').onclick=()=>{readInputs();status('设置已保存')};
+  actions.innerHTML='<button id="cloudSaveCfg">保存设置</button><button id="cloudUpload">上传到云端</button><button id="cloudDownload">从云端下载</button><button id="cloudNewBin">新建云端备份</button><button id="cloudRecovery">导出覆盖前备份</button><button id="confirmModal" class="primary">关闭</button>';
+  const statusEl=byId('cloudStatus');
+  const status=(message,error=false)=>{statusEl.textContent=message;statusEl.style.color=error?'#b25d55':'#50745c'};
+  const readInputs=()=>{
+    const config={apiKey:byId('cloudApiKey').value.trim(),binId:byId('cloudBinId').value.trim()};
+    if(config.binId&&!validBinId(config.binId))throw new Error('Bin ID 应为 24 位字母数字；旧的 undefined 请清空后重新上传');
+    cloudConfig=config;saveCloudConfig();return {...config};
+  };
+  let busy=false;
+  const setBusy=value=>{busy=value;actions.querySelectorAll('button').forEach(b=>b.disabled=value);byId('cloudApiKey').disabled=value;byId('cloudBinId').disabled=value};
+  // 请求中保留窗口，防止重复操作或丢失返回的 ID。
+  byId('confirmModal').onclick=()=>{if(!busy)closeModal()};
+  byId('modalRoot').querySelector('.modal-cover').onclick=e=>{if(e.target===e.currentTarget&&!busy)closeModal()};
+  byId('cloudSaveCfg').onclick=()=>{try{readInputs();status('设置已保存')}catch(e){status(e.message,true)}};
+  byId('cloudNewBin').onclick=()=>{byId('cloudBinId').value='';status('已清空输入框。点击上传会创建新的云端备份，原备份仍保留。')};
+  byId('cloudRecovery').onclick=()=>{
+    const backup=localStorage.getItem(CLOUD_RECOVERY_KEY);
+    if(!backup)return status('暂无覆盖前备份');
+    const a=document.createElement('a'),url=URL.createObjectURL(new Blob([backup],{type:'application/json;charset=utf-8'}));
+    a.href=url;a.download='知序_云端下载前备份.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);status('已导出，可通过侧栏「导入备份」恢复');
+  };
   byId('cloudUpload').onclick=async()=>{
-    readInputs();
-    if(!cloudConfig.apiKey)return status('上传需要 API Key','#b25d55');
-    byId('cloudUpload').textContent='上传中…';
     try{
-      let id=cloudConfig.binId;
-      const headers={'X-Master-Key':cloudConfig.apiKey,'Content-Type':'application/json'};
-      if(id){
-        await fetch('https://api.jsonbin.io/v3/b/'+id,{method:'PUT',headers,body:JSON.stringify(state)});
-      }else{
-        const res=await fetch('https://api.jsonbin.io/v3/b',{method:'POST',headers,body:JSON.stringify(state)});
-        const j=await res.json();
-        id=j.metadata?.id;cloudConfig.binId=id;saveCloudConfig();
-      }
-      byId('cloudBinId').value=id;
-      // 更新网址 hash，方便收藏
-      history.replaceState(null,'','#bin='+id);
-      status('上传成功！你的笔记网址：'+location.origin+location.pathname+'#bin='+id+'（在新设备填入 API Key 即可访问）','#7e9b81');
-    }catch(e){status('上传失败：'+e.message,'#b25d55')}
-    byId('cloudUpload').textContent='上传到云端';
+      const config=readInputs();if(!config.apiKey)throw new Error('请填写 API Key');
+      if(config.binId&&!window.confirm('上传将覆盖这个 Bin 中的云端数据，确定继续吗？'))return;
+      flushEditor();const payload=JSON.stringify(state);setBusy(true);status('正在上传并重新下载核对，请稍候…');
+      const id=await uploadCloudData(config.binId,config.apiKey,payload);
+      cloudConfig.binId=id;saveCloudConfig();byId('cloudBinId').value=id;
+      const url=new URL(location.href);url.hash='bin='+id;history.replaceState(null,'',url.href);
+      status('上传成功，已重新下载核对一致！Bin ID：'+id+'。云端网址：'+url.href+'（换设备时还需填写 API Key）');
+    }catch(e){
+      if(validBinId(e.binId)){cloudConfig.binId=e.binId;byId('cloudBinId').value=e.binId;saveCloudConfig()}
+      status('上传未确认成功：'+e.message+'。请保留本地笔记，不要下载覆盖。',true);
+    }finally{setBusy(false)}
   };
   byId('cloudDownload').onclick=async()=>{
-    readInputs();
-    if(!cloudConfig.binId)return status('请填写 Bin ID','#b25d55');
-    byId('cloudDownload').textContent='下载中…';
     try{
-      await fetchCloudData(cloudConfig.binId,cloudConfig.apiKey,false);
-      status('下载成功');
-    }catch(e){status('下载失败：'+e.message,'#b25d55')}
-    byId('cloudDownload').textContent='从云端下载';
+      const config=readInputs();if(!validBinId(config.binId))throw new Error('请填写首次上传生成的 Bin ID');
+      if(!config.apiKey)throw new Error('请填写 API Key');
+      setBusy(true);status('正在读取云端数据…');
+      const result=await readCloudSnapshot(config.binId,config.apiKey);
+      const data=validateCloudData(result.record);
+      if(!window.confirm('已读取云端 '+data.notes.filter(n=>!n.deleted).length+' 篇笔记。下载将覆盖当前全部数据，确定继续吗？（覆盖前会在此浏览器保存一份恢复备份）')){status('已取消下载，本地笔记未更改');return}
+      applyCloudData(data);status('下载成功，已恢复云端笔记。覆盖前的数据已保留在本地恢复备份中。');
+    }catch(e){status('下载失败：'+e.message,true)}finally{setBusy(false)}
   };
 }
 byId('cloudSyncBtn').onclick=openCloudModal;
-
-// ===== 关闭页面时自动静默上传（仅当数据有变更且已配置云端）=====
-let lastCloudPayload=null;
-function silentUpload(){
-  if(!cloudConfig.apiKey||!cloudConfig.binId)return;
-  let payload;
-  try{payload=JSON.stringify(state)}catch(e){return}
-  if(payload===lastCloudPayload)return;
-  lastCloudPayload=payload;
-  try{
-    fetch('https://api.jsonbin.io/v3/b/'+cloudConfig.binId,{
-      method:'PUT',
-      headers:{'X-Master-Key':cloudConfig.apiKey,'Content-Type':'application/json'},
-      body:payload,
-      keepalive:true
-    }).catch(()=>{});
-  }catch(e){}
-}
-window.addEventListener('beforeunload',silentUpload);
-
-// ===== URL hash 自动加载：打开带 #bin=xxx 的网址时自动从云端拉取 =====
+// 云端链接只预填 ID，由用户主动下载，避免旧设备意外覆盖新笔记。
 (function(){
-  const m=location.hash.match(/#bin=([a-zA-Z0-9]+)/);
-  if(!m)return;
-  const binId=m[1];
+  const binId=new URLSearchParams(location.hash.slice(1)).get('bin');
+  if(!binId)return;
+  if(!validBinId(binId)){setTimeout(()=>toast('云端链接的 Bin ID 无效，请重新上传生成正确链接'),500);return}
   cloudConfig.binId=binId;saveCloudConfig();
-  // 等页面初始化完成后自动加载
-  setTimeout(async()=>{
-    // 如果没有配置 API Key，提示用户去设置
-    if(!cloudConfig.apiKey){
-      toast('检测到云端笔记 ID，请在「☁ 云端同步」中填入 API Key 以加载笔记');
-      return;
-    }
-    // 如果本地没有数据（初始默认状态），静默加载；否则询问
-    const hasLocalData=liveNotes().some(n=>n.content&&n.content!==defaultContent())||state.tree.length>3;
-    try{
-      await fetchCloudData(binId,cloudConfig.apiKey, !hasLocalData);
-    }catch(e){
-      toast('加载云端笔记失败：'+e.message+'（请检查 API Key 是否正确）');
-    }
-  },500);
+  setTimeout(()=>{openCloudModal();byId('cloudStatus').textContent='已识别云端 Bin ID，请填写 API Key，然后点击「从云端下载」。'},500);
 })();
